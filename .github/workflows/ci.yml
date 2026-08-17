@@ -70,7 +70,7 @@ jobs:
   release:
     name: Build Release APK & Publish Telegram
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: ${{ needs.build.result == 'success' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
