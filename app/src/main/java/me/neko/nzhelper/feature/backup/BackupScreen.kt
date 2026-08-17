@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.CloudUpload
@@ -72,6 +73,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 import me.neko.nzhelper.core.database.AppDatabase
 import me.neko.nzhelper.core.database.BackupRepository
+import me.neko.nzhelper.core.database.CheckInRecordRepository
 import me.neko.nzhelper.core.database.RecycleRepository
 import me.neko.nzhelper.core.database.SessionRepository
 import me.neko.nzhelper.core.datastore.TagSettings
@@ -132,7 +134,12 @@ fun BackupScreen(
         } catch (_: Exception) {
             0
         }
-        return ModuleCounts(sessions, recycle, taxonomy, aiConfig)
+        val checkIns = try {
+            CheckInRecordRepository.count(context)
+        } catch (_: Exception) {
+            0
+        }
+        return ModuleCounts(sessions, recycle, taxonomy, aiConfig, checkIns)
     }
 
     var importing by remember { mutableStateOf(false) }
@@ -375,9 +382,11 @@ fun BackupScreen(
                 sessions = preview.sessionCount,
                 recycleBin = preview.recycleCount,
                 taxonomy = preview.taxonomyCount,
-                aiConfig = preview.aiConfigCount
+                aiConfig = preview.aiConfigCount,
+                checkIns = preview.checkInCount
             ),
             legacySessionsOnly = preview.legacySessionsOnly,
+            hanimeCheckInsOnly = preview.hanimeCheckInsOnly,
             onConfirm = { selected ->
                 pendingImportPreview = null
                 importing = true
@@ -433,9 +442,11 @@ fun BackupScreen(
                 sessions = preview.sessionCount,
                 recycleBin = preview.recycleCount,
                 taxonomy = preview.taxonomyCount,
-                aiConfig = preview.aiConfigCount
+                aiConfig = preview.aiConfigCount,
+                checkIns = preview.checkInCount
             ),
             legacySessionsOnly = preview.legacySessionsOnly,
+            hanimeCheckInsOnly = preview.hanimeCheckInsOnly,
             onConfirm = { selected ->
                 pendingWebDavRestorePreview = null
                 webDavRestoring = true
@@ -479,7 +490,8 @@ private data class ModuleCounts(
     val sessions: Int,
     val recycleBin: Int,
     val taxonomy: Int,
-    val aiConfig: Int = 0
+    val aiConfig: Int = 0,
+    val checkIns: Int = 0
 )
 
 @Composable
@@ -490,13 +502,15 @@ private fun BackupModuleDialog(
     modules: BackupModules,
     counts: ModuleCounts,
     legacySessionsOnly: Boolean = false,
+    hanimeCheckInsOnly: Boolean = false,
     onConfirm: (BackupModules) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var sessions by remember { mutableStateOf(modules.sessions) }
-    var recycleBin by remember { mutableStateOf(modules.recycleBin && !legacySessionsOnly) }
-    var taxonomy by remember { mutableStateOf(modules.taxonomy && !legacySessionsOnly) }
-    var aiConfig by remember { mutableStateOf(modules.aiConfig && !legacySessionsOnly) }
+    var sessions by remember { mutableStateOf(modules.sessions && !hanimeCheckInsOnly) }
+    var recycleBin by remember { mutableStateOf(modules.recycleBin && !legacySessionsOnly && !hanimeCheckInsOnly) }
+    var taxonomy by remember { mutableStateOf(modules.taxonomy && !legacySessionsOnly && !hanimeCheckInsOnly) }
+    var aiConfig by remember { mutableStateOf(modules.aiConfig && !legacySessionsOnly && !hanimeCheckInsOnly) }
+    var checkIns by remember { mutableStateOf(modules.checkIns && !legacySessionsOnly) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -514,11 +528,19 @@ private fun BackupModuleDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (hanimeCheckInsOnly) {
+                    Text(
+                        "检测到 Han1meViewer 备份，仅导入打卡记录；恢复后会被纳入 NzHelper 加密备份。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 ModuleRow(
                     icon = Icons.Outlined.FileOpen,
                     label = "记录",
                     count = counts.sessions,
                     checked = sessions,
+                    enabled = !hanimeCheckInsOnly,
                     onCheckedChange = { sessions = it }
                 )
                 ModuleRow(
@@ -526,7 +548,7 @@ private fun BackupModuleDialog(
                     label = "回收站",
                     count = counts.recycleBin,
                     checked = recycleBin,
-                    enabled = !legacySessionsOnly,
+                    enabled = !legacySessionsOnly && !hanimeCheckInsOnly,
                     onCheckedChange = { recycleBin = it }
                 )
                 ModuleRow(
@@ -534,7 +556,7 @@ private fun BackupModuleDialog(
                     label = "标签体系",
                     count = counts.taxonomy,
                     checked = taxonomy,
-                    enabled = !legacySessionsOnly,
+                    enabled = !legacySessionsOnly && !hanimeCheckInsOnly,
                     onCheckedChange = { taxonomy = it }
                 )
                 ModuleRow(
@@ -542,15 +564,23 @@ private fun BackupModuleDialog(
                     label = "AI 配置",
                     count = counts.aiConfig,
                     checked = aiConfig,
-                    enabled = !legacySessionsOnly,
+                    enabled = !legacySessionsOnly && !hanimeCheckInsOnly,
                     onCheckedChange = { aiConfig = it }
+                )
+                ModuleRow(
+                    icon = Icons.Outlined.CalendarMonth,
+                    label = "打卡记录",
+                    count = counts.checkIns,
+                    checked = checkIns,
+                    enabled = !legacySessionsOnly,
+                    onCheckedChange = { checkIns = it }
                 )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    onConfirm(BackupModules(sessions, recycleBin, taxonomy, aiConfig))
+                    onConfirm(BackupModules(sessions, recycleBin, taxonomy, aiConfig, checkIns))
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,

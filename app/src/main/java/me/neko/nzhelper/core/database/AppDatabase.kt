@@ -7,11 +7,13 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import me.neko.nzhelper.core.database.dao.AiConfigDao
+import me.neko.nzhelper.core.database.dao.CheckInRecordDao
 import me.neko.nzhelper.core.database.dao.RecycleBinDao
 import me.neko.nzhelper.core.database.dao.SessionDao
 import me.neko.nzhelper.core.database.dao.TaxonomyDao
 import me.neko.nzhelper.core.database.dao.WebDavConfigDao
 import me.neko.nzhelper.core.database.entity.AiConfigEntity
+import me.neko.nzhelper.core.database.entity.CheckInRecordEntity
 import me.neko.nzhelper.core.database.entity.RecycleBinEntity
 import me.neko.nzhelper.core.database.entity.SessionEntity
 import me.neko.nzhelper.core.database.entity.TaxonomyEntity
@@ -25,9 +27,10 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         RecycleBinEntity::class,
         WebDavConfigEntity::class,
         TaxonomyEntity::class,
-        AiConfigEntity::class
+        AiConfigEntity::class,
+        CheckInRecordEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,6 +40,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun webDavConfigDao(): WebDavConfigDao
     abstract fun taxonomyDao(): TaxonomyDao
     abstract fun aiConfigDao(): AiConfigDao
+    abstract fun checkInRecordDao(): CheckInRecordDao
 
     companion object {
         private const val DB_NAME = "records.db"
@@ -60,7 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
                 DB_NAME
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
         }
@@ -94,6 +98,21 @@ abstract class AppDatabase : RoomDatabase() {
                             "`key` TEXT NOT NULL, " +
                             "`value` TEXT NOT NULL, " +
                             "PRIMARY KEY(`key`))"
+                )
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `check_in_records` (" +
+                            "`sourceKey` TEXT NOT NULL, " +
+                            "`date` TEXT NOT NULL, " +
+                            "`time` TEXT NOT NULL, " +
+                            "`type` TEXT NOT NULL, " +
+                            "`sideDishes` TEXT NOT NULL, " +
+                            "`feeling` TEXT NOT NULL, " +
+                            "PRIMARY KEY(`sourceKey`))"
                 )
             }
         }

@@ -114,7 +114,7 @@ jobs:
           NZH_KEYSTORE_FILE: ${{ steps.keystore.outputs.enabled == 'true' && format('{0}/release.keystore', runner.temp) || '' }}
           NZH_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           NZH_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          NZH_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          NZH_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || secrets.KEYSTORE_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Upload Release APK
@@ -126,14 +126,12 @@ jobs:
           retention-days: 30
 
       - name: Publish Release APK to Telegram
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -uo pipefail
-
-          [ -n "${TELEGRAM_BOT_TOKEN}" ] || exit 1
-          [ -n "${TELEGRAM_CHAT_ID}" ] || exit 1
 
           APK=$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)
           [ -f "${APK}" ] || exit 1

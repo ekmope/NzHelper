@@ -126,14 +126,17 @@ object BackupRepository {
         } else emptyMap()
 
         val payload = WebDavBackupPayload(
-            version = 3,
+            version = 4,
             exportedAt = System.currentTimeMillis(),
             sessions = if (modules.sessions) SessionRepository.loadSessions(context) else emptyList(),
             recycleBin = if (modules.recycleBin) RecycleRepository.loadRecycleBin(context) else emptyList(),
             categories = if (modules.taxonomy) TagSettings.getCategories(context) else emptyList(),
             tagGroups = if (modules.taxonomy) TagSettings.getGroups(context) else emptyList(),
             tags = if (modules.taxonomy) TagSettings.getTags(context) else emptyList(),
-            aiConfig = aiConfigMap
+            aiConfig = aiConfigMap,
+            checkInRecords = if (modules.checkIns) {
+                CheckInRecordRepository.loadAll(context)
+            } else emptyList()
         )
         val json = gson.toJson(payload)
         BackupCipher.encrypt(context, json.toByteArray(Charsets.UTF_8))
@@ -143,9 +146,11 @@ object BackupRepository {
         context: Context,
         payload: WebDavBackupPayload,
         modules: BackupModules
-    ): Pair<Int, Int> {
+    ): ApplyResult {
         var addedSessions = 0
         var addedRecycle = 0
+        var addedCheckIns = 0
+        var existingCheckIns = 0
 
         if (modules.sessions) {
             val currentSessions = SessionRepository.loadSessions(context)
@@ -181,17 +186,32 @@ object BackupRepository {
             }
         }
 
-        return addedSessions to addedRecycle
+        if (modules.checkIns) {
+            val result = CheckInRecordRepository.merge(context, payload.checkInRecords)
+            addedCheckIns = result.added
+            existingCheckIns = result.existing
+        }
+
+        return ApplyResult(addedSessions, addedRecycle, addedCheckIns, existingCheckIns)
     }
+
+    private data class ApplyResult(
+        val addedSessions: Int,
+        val addedRecycle: Int,
+        val addedCheckIns: Int,
+        val existingCheckIns: Int
+    )
 
     data class BackupPreview(
         val payload: WebDavBackupPayload,
-        val legacySessionsOnly: Boolean = false
+        val legacySessionsOnly: Boolean = false,
+        val hanimeCheckInsOnly: Boolean = false
     ) {
         val sessionCount: Int get() = payload.sessions.size
         val recycleCount: Int get() = payload.recycleBin.size
         val taxonomyCount: Int get() = payload.categories.size + payload.tagGroups.size + payload.tags.size
         val aiConfigCount: Int get() = payload.aiConfig?.size ?: 0
+        val checkInCount: Int get() = payload.checkInRecords.size
     }
 
     suspend fun previewNzBytes(
@@ -222,6 +242,17 @@ object BackupRepository {
             return@withContext previewNzBytes(context, bytes)
         }
         val text = String(bytes, Charsets.UTF_8)
+        if (CheckInRecordRepository.isHanimeCheckInBackup(text)) {
+            val checkInRecords = CheckInRecordRepository.parseHanimeCheckInBackup(text)
+            return@withContext BackupPreview(
+                payload = WebDavBackupPayload(
+                    version = 1,
+                    exportedAt = 0L,
+                    checkInRecords = checkInRecords
+                ),
+                hanimeCheckInsOnly = true
+            ) to ""
+        }
         val payload = try {
             gson.fromJson(text, WebDavBackupPayload::class.java)
         } catch (_: Exception) {
@@ -255,16 +286,32 @@ object BackupRepository {
         preview: BackupPreview,
         modules: BackupModules
     ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        val effective = if (preview.legacySessionsOnly) {
-            BackupModules(sessions = modules.sessions, recycleBin = false, taxonomy = false, aiConfig = false)
-        } else {
-            modules
+        val effective = when {
+            preview.legacySessionsOnly -> BackupModules(
+                sessions = modules.sessions,
+                recycleBin = false,
+                taxonomy = false,
+                aiConfig = false,
+                checkIns = false
+            )
+            preview.hanimeCheckInsOnly -> BackupModules(
+                sessions = false,
+                recycleBin = false,
+                taxonomy = false,
+                aiConfig = false,
+                checkIns = modules.checkIns
+            )
+            else -> modules
         }
-        val (addedS, addedR) = applyPayload(context, preview.payload, effective)
+        val result = applyPayload(context, preview.payload, effective)
         val parts = mutableListOf<String>()
-        if (effective.sessions) parts += "记录 +$addedS"
-        if (effective.recycleBin) parts += "回收站 +$addedR"
+        if (effective.sessions) parts += "记录 +${result.addedSessions}"
+        if (effective.recycleBin) parts += "回收站 +${result.addedRecycle}"
         if (effective.taxonomy) parts += "标签体系已合并"
+        if (effective.checkIns) {
+            parts += "打卡 +${result.addedCheckIns}"
+            if (result.existingCheckIns > 0) parts += "已存在 ${result.existingCheckIns}"
+        }
         true to if (parts.isEmpty()) "未选择任何模块" else "恢复成功：${parts.joinToString("，")}"
     }
 

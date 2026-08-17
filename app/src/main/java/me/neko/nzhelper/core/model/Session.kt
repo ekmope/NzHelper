@@ -40,7 +40,8 @@ data class WebDavBackupPayload(
     @SerializedName("categories") val categories: List<CategoryDef> = emptyList(),
     @SerializedName("tagGroups") val tagGroups: List<TagGroupDef> = emptyList(),
     @SerializedName("tags") val tags: List<TagDef> = emptyList(),
-    @SerializedName("aiConfig") val aiConfig: Map<String, String>? = null
+    @SerializedName("aiConfig") val aiConfig: Map<String, String>? = null,
+    @SerializedName("checkInRecords") val checkInRecords: List<CheckInRecord> = emptyList()
 )
 
 @Immutable
@@ -48,9 +49,10 @@ data class BackupModules(
     val sessions: Boolean = true,
     val recycleBin: Boolean = true,
     val taxonomy: Boolean = true,
-    val aiConfig: Boolean = true
+    val aiConfig: Boolean = true,
+    val checkIns: Boolean = true
 ) {
-    val noneSelected: Boolean get() = !sessions && !recycleBin && !taxonomy && !aiConfig
+    val noneSelected: Boolean get() = !sessions && !recycleBin && !taxonomy && !aiConfig && !checkIns
 
     companion object {
         val ALL = BackupModules()
